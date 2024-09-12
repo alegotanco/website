@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Time Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        .class-container {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .timer {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+        button {
+            margin-right: 5px;
+        }
+        progress {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h1>Study Time Tracker</h1>
+    <div id="classes-container"></div>
+    <button onclick="addClass()">Add Class</button>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        let classes = [];
+
+        async function fetchClasses() {
+            const response = await fetch(`${API_URL}/classes`);
+            classes = await response.json();
+            renderClasses();
+        }
+
+        async function addClass() {
+            const name = prompt("Enter class name:");
+            const goal = parseInt(prompt("Enter weekly goal (in minutes):")) * 60;
+            const response = await fetch(`${API_URL}/classes`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, goal })
+            });
+            const newClass = await response.json();
+            classes.push({ ...newClass, timer: 0, interval: null });
+            renderClasses();
+        }
+
+        async function editClass(index) {
+            const cls = classes[index];
+            const name = prompt("Enter new class name:", cls.name);
+            const goal = parseInt(prompt("Enter new weekly goal (in minutes):")) * 60;
+            const response = await fetch(`${API_URL}/classes/${cls.id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, goal, studied: cls.studied })
+            });
+            if (response.ok) {
+                cls.name = name;
+                cls.goal = goal;
+                renderClasses();
+            }
+        }
+
+        async function deleteClass(index) {
+            if (confirm("Are you sure you want to delete this class?")) {
+                const cls = classes[index];
+                const response = await fetch(`${API_URL}/classes/${cls.id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    classes.splice(index, 1);
+                    renderClasses();
+                }
+            }
+        }
+
+        function renderClasses() {
+            const container = document.getElementById('classes-container');
+            container.innerHTML = '';
+            classes.forEach((cls, index) => {
+                const classDiv = document.createElement('div');
+                classDiv.className = 'class-container';
+                classDiv.innerHTML = `
+                    <h2>${cls.name}</h2>
+                    <div class="timer">${formatTime(cls.timer || 0)}</div>
+                    <button onclick="startTimer(${index})">Start</button>
+                    <button onclick="stopTimer(${index})">Stop</button>
+                    <button onclick="editClass(${index})">Edit</button>
+                    <button onclick="deleteClass(${index})">Delete</button>
+                    <progress value="${cls.studied}" max="${cls.goal}"></progress>
+                    <div>Goal: ${formatTime(cls.goal)} | Studied: ${formatTime(cls.studied)}</div>
+                `;
+                container.appendChild(classDiv);
+            });
+        }
+
+        function startTimer(index) {
+            if (classes[index].interval) return;
+            classes[index].interval = setInterval(() => {
+                classes[index].timer = (classes[index].timer || 0) + 1;
+                classes[index].studied++;
+                updateStudyTime(index);
+                renderClasses();
+            }, 1000);
+        }
+
+        async function stopTimer(index) {
+            clearInterval(classes[index].interval);
+            classes[index].interval = null;
+            classes[index].timer = 0;
+            await updateStudyTime(index);
+            renderClasses();
+        }
+
+        async function updateStudyTime(index) {
+            const cls = classes[index];
+            await fetch(`${API_URL}/classes/${cls.id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: cls.name, goal: cls.goal, studied: cls.studied })
+            });
+        }
+
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        fetchClasses();
+    </script>
+</body>
+</html>
